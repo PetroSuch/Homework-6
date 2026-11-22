@@ -13,7 +13,7 @@ namespace TaskAuthenticationAuthorization
 {
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             var host = CreateHostBuilder(args).Build();
             using (var scope = host.Services.CreateScope())
@@ -29,8 +29,10 @@ namespace TaskAuthenticationAuthorization
                     var logger = services.GetRequiredService<ILogger<Program>>();
                     logger.LogError(ex, "An error occurred seeding the DB.");
                 }
+
+                await AccountSetup.InitializeAsync(services);
             }
-            host.Run();
+            await host.RunAsync();
         }
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
