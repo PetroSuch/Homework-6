@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
@@ -9,20 +11,23 @@ using TaskAuthenticationAuthorization.Models;
 
 namespace TaskAuthenticationAuthorization.Controllers
 {
+    [Authorize(Roles = "Admin,Buyer")]
     public class OrderDetailsController : Controller
     {
         private readonly ShoppingContext _context;
+        private readonly UserManager<ApplicationUser> _users;
 
-        public OrderDetailsController(ShoppingContext context)
+        public OrderDetailsController(ShoppingContext context, UserManager<ApplicationUser> users)
         {
             _context = context;
+            _users = users;
         }
 
         // GET: OrderDetails
         public async Task<IActionResult> Index()
         {
-            var shoppingContext = _context.OrderDetails.Include(o => o.Order).Include(o => o.Product);
-            return View(await shoppingContext.ToListAsync());
+            var details = await VisibleOrderDetailsAsync();
+            return View(await details.ToListAsync());
         }
 
         // GET: OrderDetails/Details/5
@@ -33,10 +38,8 @@ namespace TaskAuthenticationAuthorization.Controllers
                 return NotFound();
             }
 
-            var orderDetail = await _context.OrderDetails
-                .Include(o => o.Order)
-                .Include(o => o.Product)
-                .FirstOrDefaultAsync(m => m.Id == id);
+            var details = await VisibleOrderDetailsAsync();
+            var orderDetail = await details.FirstOrDefaultAsync(detail => detail.Id == id);
             if (orderDetail == null)
             {
                 return NotFound();
@@ -46,6 +49,7 @@ namespace TaskAuthenticationAuthorization.Controllers
         }
 
         // GET: OrderDetails/Create
+        [Authorize(Roles = "Admin")]
         public IActionResult Create()
         {
             ViewData["OrderId"] = new SelectList(_context.Orders, "Id", "Id");
@@ -58,6 +62,7 @@ namespace TaskAuthenticationAuthorization.Controllers
         // more details see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Create([Bind("Id,OrderId,ProductId,Quantity")] OrderDetail orderDetail)
         {
             if (ModelState.IsValid)
@@ -72,6 +77,7 @@ namespace TaskAuthenticationAuthorization.Controllers
         }
 
         // GET: OrderDetails/Edit/5
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Edit(int? id)
         {
             if (id == null)
@@ -94,6 +100,7 @@ namespace TaskAuthenticationAuthorization.Controllers
         // more details see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Edit(int id, [Bind("Id,OrderId,ProductId,Quantity")] OrderDetail orderDetail)
         {
             if (id != orderDetail.Id)
@@ -127,6 +134,7 @@ namespace TaskAuthenticationAuthorization.Controllers
         }
 
         // GET: OrderDetails/Delete/5
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Delete(int? id)
         {
             if (id == null)
@@ -149,12 +157,29 @@ namespace TaskAuthenticationAuthorization.Controllers
         // POST: OrderDetails/Delete/5
         [HttpPost, ActionName("Delete")]
         [ValidateAntiForgeryToken]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
             var orderDetail = await _context.OrderDetails.FindAsync(id);
             _context.OrderDetails.Remove(orderDetail);
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
+        }
+
+        private async Task<IQueryable<OrderDetail>> VisibleOrderDetailsAsync()
+        {
+            var details = _context.OrderDetails
+                .Include(detail => detail.Order)
+                .Include(detail => detail.Product);
+
+            if (User.IsInRole("Admin"))
+            {
+                return details;
+            }
+
+            var user = await _users.GetUserAsync(User);
+            var customerId = user?.CustomerId;
+            return details.Where(detail => detail.Order.CustomerId == customerId);
         }
 
         private bool OrderDetailExists(int id)
